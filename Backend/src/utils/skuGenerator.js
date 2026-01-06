@@ -1,24 +1,27 @@
 const Product = require('../models/Product');
+const Category = require('../models/Category');
 
-const CATEGORY_PREFIX_MAP = {
-  FOOD: 'FOOD',
-  BEVERAGE: 'BEV',
-  UTILITY: 'UTIL',
-  CLOTHING: 'CLOTH'
-};
-
-async function generateSKU(category) {
-  const prefix = CATEGORY_PREFIX_MAP[category];
-
-  if (!prefix) {
-    throw new Error('Invalid category');
+const generateSKU = async (categoryId) => {
+  const category = await Category.findById(categoryId);
+  if (!category) {
+    throw new Error('Category not found');
   }
 
-  const count = await Product.countDocuments({ category });
+  const prefix = category.skuPrefix;
 
-  const runningNumber = String(count + 1).padStart(3, '0');
+  let nextNumber = 1;
+  let sku;
+  let exists = true;
 
-  return `${prefix}${runningNumber}`;
-}
+  while (exists) {
+    sku = `${prefix}${String(nextNumber).padStart(3, '0')}`;
+    exists = await Product.findOne({ sku }); // เช็คว่ามี SKU นี้ใน DB หรือยัง
+    if (exists) {
+      nextNumber++;
+    }
+  }
+
+  return sku;
+};
 
 module.exports = generateSKU;

@@ -1,19 +1,11 @@
 const mongoose = require('mongoose');
 
-const PRODUCT_CATEGORIES = [
-  'FOOD',
-  'BEVERAGE',
-  'UTILITY',
-  'CLOTHING'
-];
-
 const productSchema = new mongoose.Schema(
   {
     name: {
       type: String,
       required: true,
-      trim: true,
-      minlength: 3
+      trim: true
     },
     sku: {
       type: String,
@@ -31,14 +23,16 @@ const productSchema = new mongoose.Schema(
       min: 0
     },
     category: {
-      type: String,
-      required: true,
-      enum: PRODUCT_CATEGORIES
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      required: true
     }
   },
   {
     timestamps: true
   }
 );
+
+productSchema.index({ name: 1 });
 
 module.exports = mongoose.model('Product', productSchema);

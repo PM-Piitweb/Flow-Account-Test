@@ -7,6 +7,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api/products', require('./routes/product.routes'));
+app.use('/api/categories', require('./routes/category.routes')); 
 
 // Health check
 app.get('/', (req, res) => {

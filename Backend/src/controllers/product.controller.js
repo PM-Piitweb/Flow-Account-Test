@@ -52,7 +52,10 @@ const getProducts = async (req, res) => {
       filter.category = category;
     }
 
-    const products = await Product.find(filter).sort({ createdAt: -1 });
+    const products = await Product.find(filter)
+    .populate('category', 'name skuPrefix')
+    .sort({ createdAt: -1 });
+
 
     res.json(products);
   } catch (err) {
@@ -71,21 +74,17 @@ const sellProduct = async (req, res) => {
       });
     }
 
-    const product = await Product.findById(productId);
+    const product = await Product.findOneAndUpdate(
+    { _id: productId, stock: { $gte: quantity } },
+    { $inc: { stock: -quantity } },
+    { new: true }
+    ).populate('category', 'name skuPrefix');
+
     if (!product) {
-      return res.status(404).json({
-        message: 'Product not found'
-      });
-    }
-
-    if (product.stock < quantity) {
       return res.status(400).json({
-        message: 'Insufficient stock'
+        message: 'Insufficient stock or product not found'
       });
     }
-
-    product.stock -= quantity;
-    await product.save();
 
     res.json({
       message: 'Product sold successfully',
@@ -96,6 +95,7 @@ const sellProduct = async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
 
 const searchProducts = async (req, res) => {
   try {
@@ -110,11 +110,11 @@ const searchProducts = async (req, res) => {
     const regex = new RegExp(keyword, 'i'); // case-insensitive
 
     const products = await Product.find({
-      $or: [
-        { name: regex },
-        { sku: regex }
-      ]
-    }).sort({ createdAt: -1 });
+    $or: [{ name: regex }, { sku: regex }]
+    })
+    .populate('category', 'name skuPrefix')
+    .sort({ createdAt: -1 });
+
 
     res.json(products);
   } catch (err) {
@@ -133,35 +133,37 @@ const bulkPriceUpdate = async (req, res) => {
       });
     }
 
-    let successCount = 0;
+    const operations = updates
+      .filter(item =>
+        item.productId &&
+        item.newPrice !== undefined &&
+        item.newPrice > 0
+      )
+      .map(item => ({
+        updateOne: {
+          filter: { _id: item.productId },
+          update: { $set: { price: item.newPrice } }
+        }
+      }));
 
-    for (const item of updates) {
-      const { productId, newPrice } = item;
-
-      if (!productId || newPrice === undefined || newPrice <= 0) {
-        continue; // ข้ามอันที่ข้อมูลไม่ valid
-      }
-
-      const result = await Product.findByIdAndUpdate(
-        productId,
-        { price: newPrice },
-        { new: true }
-      );
-
-      if (result) {
-        successCount++;
-      }
+    if (operations.length === 0) {
+      return res.status(400).json({
+        message: 'No valid updates found'
+      });
     }
+
+    const result = await Product.bulkWrite(operations);
 
     res.json({
       message: 'Bulk price update completed',
-      updatedCount: successCount
+      updatedCount: result.modifiedCount
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
 
 const updateProduct = async (req, res) => {
   try {
@@ -197,11 +199,15 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // update เฉพาะ field ที่ส่งมา
     if (name !== undefined) product.name = name;
     if (price !== undefined) product.price = price;
     if (stock !== undefined) product.stock = stock;
-    if (category !== undefined) product.category = category;
+
+    if (category !== undefined && category.toString() !== product.category.toString()) {
+    product.category = category;
+    product.sku = await generateSKU(category);
+    }
+
 
     await product.save();
 
@@ -214,6 +220,7 @@ const updateProduct = async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
 
 const deleteProduct = async (req, res) => {
   try {
